@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modelo 3D con Textura</title>
+    <style>
+        html, body {
+            margin: 0;
+            overflow: hidden;
+            width: 100%;
+            height: 100%;
+        }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+    <input type="file" id="fileInput" accept="image/*" style="display:none;">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        camera.position.z = 2;
+
+        let model;
+        let isDragging = false;
+        let previousMousePosition = { x: 0, y: 0 };
+
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.load('https://static.wixstatic.com/media/8f321f_53a51c423b11465b9121bc23f4abc2c9~mv2.jpg', function(texture) {
+            texture.mapping = THREE.EquirectangularReflectionMapping;
+            scene.environment = texture; 
+
+            const loader = new THREE.GLTFLoader();
+            loader.load('https://static.wixstatic.com/3d/8f321f_3a2d0635ed4d43dfbd6dc6071dad7f08.glb', function(gltf) {
+                model = gltf.scene;
+
+                model.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.metalness = 1;     
+                        child.material.roughness = 0.05;  
+                        child.material.envMap = scene.environment; 
+                        child.material.envMapIntensity = 1; 
+                    }
+                });
+
+                scene.add(model);
+                model.scale.set(1, 1, 1);
+            });
+        });
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); 
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 1); 
+        pointLight.position.set(5, 5, 5);
+        scene.add(pointLight);
+
+        function onStart(event) {
+            isDragging = true;
+            const clientX = event.clientX || event.touches[0].clientX;
+            const clientY = event.clientY || event.touches[0].clientY;
+            previousMousePosition.x = clientX;
+            previousMousePosition.y = clientY;
+            event.preventDefault();
+        }
+
+        function onEnd(event) {
+            isDragging = false;
+            event.preventDefault();
+        }
+
+        function onMove(event) {
+            if (!isDragging || !model) return;
+
+            const clientX = event.clientX || event.touches[0].clientX;
+            const clientY = event.clientY || event.touches[0].clientY;
+
+            const deltaMove = {
+                x: clientX - previousMousePosition.x,
+                y: clientY - previousMousePosition.y
+            };
+
+            const rotationSpeed = 0.005;
+            model.rotation.y += deltaMove.x * rotationSpeed;
+
+            previousMousePosition.x = clientX;
+            previousMousePosition.y = clientY;
+            event.preventDefault();
+        }
+
+        document.addEventListener('mousedown', onStart);
+        document.addEventListener('mouseup', onEnd);
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('touchstart', onStart);
+        document.addEventListener('touchend', onEnd);
+        document.addEventListener('touchmove', onMove);
+
+        document.addEventListener('click', (event) => {
+            const mouse = new THREE.Vector2(
+                (event.clientX / window.innerWidth) * 2 - 1,
+                -(event.clientY / window.innerHeight) * 2 + 1
+            );
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(model.children, true);
+            if (intersects.length > 0) {
+                const selectedMesh = intersects[0].object;
+                document.getElementById('fileInput').click();
+                document.getElementById('fileInput').onchange = function(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            const texture = new THREE.TextureLoader().load(e.target.result, (texture) => {
+                                selectedMesh.material.map = texture;
+                                selectedMesh.material.map.flipY = false;
+                                selectedMesh.material.needsUpdate = true;
+                            });
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                };
+            }
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            renderer.setSize(width, height);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+        });
+    </script>
+</body>
+</html>
